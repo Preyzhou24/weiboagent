@@ -1,0 +1,31 @@
+{
+  "id": "weibo-feed-monitor",
+  "name": "Weibo Feed Monitor & Auto-Engage (API)",
+  "description": "Search for relevant content via Weibo Open API, auto like and comment via API, no browser automation needed",
+  "schedule": "interval",
+  "platform": "weibo",
+  "executor": "executors/weibo-feed-monitor.ts",
+  "config": {
+    "intervalMinutes": 120,
+    "maxActionsPerRun": 20,
+    "searchKeywords": ["AI agent", "大模型", "LLM", "开源项目", "编程"],
+    "engagementRules": {
+      "like": {
+        "enabled": true,
+        "maxPerRun": 10
+      },
+      "comment": {
+        "enabled": true,
+        "maxPerRun": 3,
+        "commentTemplates": [
+          "这个思路很有启发！",
+          "收藏了，很有价值的内容。",
+          "同意，这个方向值得关注。",
+          "好文，学习了。"
+        ]
+      }
+    },
+    "blacklist": [],
+    "account": "your_weibo_account"
+  }
+}

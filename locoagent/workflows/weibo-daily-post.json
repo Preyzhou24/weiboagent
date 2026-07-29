@@ -1,0 +1,21 @@
+{
+  "id": "weibo-daily-post",
+  "name": "Weibo Daily Tech Post",
+  "description": "Post a daily technology-related content to Weibo, rotating through content categories (tutorial, opinion, recommendation)",
+  "schedule": "daily",
+  "platform": "weibo",
+  "executor": "executors/weibo-daily-post.ts",
+  "config": {
+    "postWindows": ["08:00", "12:00", "19:00"],
+    "maxPostsPerDay": 3,
+    "contentCategories": {
+      "tech_tutorial": 0.4,
+      "industry_opinion": 0.3,
+      "project_recommendation": 0.2,
+      "casual": 0.1
+    },
+    "contentPool": "./persona/content-pool.md",
+    "hashtags": ["#技术分享#", "#AI#", "#开源#"],
+    "account": "your_weibo_account"
+  }
+}

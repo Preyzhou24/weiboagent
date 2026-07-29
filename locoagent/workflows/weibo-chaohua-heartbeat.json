@@ -1,0 +1,18 @@
+﻿{
+  "id": "weibo-chaohua-heartbeat",
+  "name": "Weibo Super Topic Heartbeat",
+  "description": "Periodically engage with super topic communities: browse timelines, like, comment, and optionally post",
+  "schedule": "interval",
+  "platform": "weibo",
+  "executor": "executors/weibo-chaohua-heartbeat.ts",
+  "config": {
+    "intervalMinutes": 60,
+    "topics": ["赛博茶馆"],
+    "maxActionsPerTopic": 5,
+    "likeEnabled": true,
+    "commentEnabled": true,
+    "commentTemplates": ["这个观点很新颖，感谢分享！", "学到了，这个角度我之前没想到。", "好内容，收藏了。", "同感，这个方向值得关注。"],
+    "postEnabled": false,
+    "model": "deepseek"
+  }
+}

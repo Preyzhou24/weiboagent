@@ -1,0 +1,72 @@
+﻿# === Dependencies ===
+node_modules/
+bun.lockb
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# === Build outputs ===
+dist/
+build/
+*.tsbuildinfo
+
+# === Environment & Secrets ===
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# === Weibo API credentials (auto-cached) ===
+# Config is stored in ~/.weibo-skill/ outside the repo
+
+# === Runtime state ===
+workflows/state.json
+workflows/.tmp/
+workflows/.locks/
+*.pcap
+
+# === Persona runtime data (keep templates, exclude runtime) ===
+locoagent/persona/operation-log.json
+locoagent/persona/analytics-report.md
+
+# === Logs ===
+logs/
+*.log
+*.err
+*.out
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# === IDE ===
+.idea/
+.vscode/
+*.sublime-*
+
+# === Testing ===
+coverage/
+.nyc_output/
+test-output.log
+
+# === Claude session data ===
+.claude/*
+locoagent/.claude/*
+
+# === Reference repos (not part of this project) ===
+ref-allinone/
+ref-locoagent/
+ref-memos/
+
+# === Certs ===
+certs/
+
+# === Temp ===
+tmp/
+*.tmp
+*.temp

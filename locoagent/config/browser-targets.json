@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "targets": {
+    "x": {
+      "cdpPort": 9222,
+      "useLegacyProfile": true,
+      "proxy": "http://127.0.0.1:6738",
+      "account": "mashijiann"
+    },
+    "weibo": {
+      "cdpPort": 9229,
+      "proxy": "http://127.0.0.1:7890",
+      "account": "your_weibo_account"
+    },
+    "linkedin": {
+      "cdpPort": 9223,
+      "proxy": null
+    },
+    "reddit": {
+      "cdpPort": 9224,
+      "proxy": null
+    },
+    "google": {
+      "cdpPort": 9225,
+      "proxy": null
+    }
+  }
+}

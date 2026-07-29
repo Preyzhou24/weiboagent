@@ -1,0 +1,12 @@
+{
+  "id": "weibo-creator-analytics",
+  "name": "Weibo Creator Analytics & Strategy Report",
+  "description": "Pull creator data and incentive plans, generate a data-driven content strategy report",
+  "schedule": "daily",
+  "platform": "weibo",
+  "executor": "executors/weibo-creator-analytics.ts",
+  "config": {
+    "reportPath": "./persona/analytics-report.md",
+    "topNPosts": 5
+  }
+}
