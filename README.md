@@ -14,7 +14,7 @@
    agent-browser ────┤── 首页信息流/关注/取关           │
    (Chrome CDP)      │   (无 API 的操作兜底)            │
                     │                                  │
-   aione CLI ────────┤── 传统搜索/用户信息 (备用)       │
+   aione CLI ────────┤── 普通微博发帖 (备用)            │
                     └─────────────────────────────────┘
 ```
 
@@ -43,44 +43,38 @@
 
 ```
 weiboagent/
-├── locoagent/                        # Agent 框架（基于 LocoAgent）
-│   ├── skills/weibo/
-│   │   ├── SKILL.md                  # 微博操作手册（API + 浏览器混合策略）
-│   │   └── references/               # 12 份 API 参考文档
-│   ├── scripts/
-│   │   └── weibo-api/
-│   │       ├── weibo-skill.js        # 微博开放平台 API 统一入口
-│   │       └── weibo-common.js       # Token 管理 / HTTP 工具
-│   ├── workflows/
-│   │   ├── weibo-hot-trend.json      # 热搜监控 workflow
-│   │   ├── weibo-chaohua-heartbeat.json  # 超话心跳 workflow
-│   │   ├── weibo-smart-reply.json    # 智能评论回复 workflow
-│   │   ├── weibo-creator-analytics.json  # 数据分析 workflow
-│   │   ├── weibo-feed-monitor.json   # 信息流监控 workflow
-│   │   ├── weibo-daily-post.json     # 每日发帖 workflow
-│   │   ├── weibo-search-reply.json   # 关键词搜索 workflow
-│   │   └── executors/                # TypeScript 执行器
-│   │       ├── weibo-hot-trend.ts
-│   │       ├── weibo-chaohua-heartbeat.ts
-│   │       ├── weibo-smart-reply.ts
-│   │       ├── weibo-creator-analytics.ts
-│   │       ├── weibo-feed-monitor.ts
-│   │       ├── weibo-daily-post.ts
-│   │       └── weibo-search-reply.ts
-│   ├── persona/
-│   │   ├── persona.md                # Agent 人设（小洛 - AI 科技观察者）
-│   │   ├── tasks.md                  # 每日任务配置
-│   │   └── content-pool.md           # 内容灵感池
-│   ├── scripts/
-│   │   ├── workflow-engine.ts        # Workflow 生命周期管理
-│   │   ├── log-operation.ts          # 操作去重日志
-│   │   ├── run-tasks.ts              # 任务运行器
-│   │   └── setup-chrome.ts          # 隔离 Chrome 启动
-│   ├── src/                          # Agent 核心（CLI、对话、工具系统）
-│   └── .env.example                  # 环境变量模板
 ├── setup.ps1                         # 一键安装脚本
 ├── .gitignore
-└── README.md
+├── README.md
+└── locoagent/                        # Agent 框架（基于 LocoAgent）
+    ├── .env.example                  # 环境变量模板
+    ├── package.json
+    ├── tsconfig.json
+    ├── skills/weibo/
+    │   ├── SKILL.md                  # 微博操作手册（API + 浏览器混合策略）
+    │   └── references/               # API 参考文档
+    ├── scripts/
+    │   ├── weibo-api/
+    │   │   ├── weibo-skill.js        # 微博开放平台 API 统一入口
+    │   │   └── weibo-common.js       # Token 管理 / HTTP 工具
+    │   ├── workflow-engine.ts        # Workflow 生命周期管理
+    │   ├── log-operation.ts          # 操作去重日志
+    │   ├── run-tasks.ts              # 任务运行器
+    │   └── setup-chrome.ts           # 隔离 Chrome 启动
+    ├── workflows/
+    │   ├── executors/                # 6 个 TypeScript 执行器
+    │   │   ├── weibo-feed-monitor.ts       # 搜索 + 点赞 + 评论 (API)
+    │   │   ├── weibo-daily-post.ts          # 定时发帖
+    │   │   ├── weibo-hot-trend.ts           # 热搜监控 (扩展)
+    │   │   ├── weibo-smart-reply.ts         # 智能评论回复 (扩展)
+    │   │   ├── weibo-chaohua-heartbeat.ts   # 超话社区运营 (扩展)
+    │   │   └── weibo-creator-analytics.ts   # 数据分析报告 (扩展)
+    │   └── *.json                    # 对应的 workflow 配置
+    ├── persona/
+    │   ├── persona.md                # Agent 人设（小洛 - AI 科技观察者）
+    │   ├── tasks.md                 # 每日任务配置
+    │   └── content-pool.md           # 内容灵感池
+    └── src/ + stubs/                 # Agent 核心运行时
 ```
 
 ## 快速开始
@@ -132,7 +126,7 @@ LLM_API_KEY=sk-your-api-key
 LLM_MODEL=deepseek-chat
 ```
 
-### 5.（可选）配置浏览器和 Cookie
+### 5.（可选）配置浏览器
 
 仅首页信息流浏览和关注/取关需要：
 
@@ -143,9 +137,6 @@ cd locoagent
 bun run setup-chrome --target weibo
 
 # 在弹出的 Chrome 窗口手动登录微博
-
-# 配置 aione CLI（备用）
-aione auth weibo set-cookie --profile web --cookie "你的cookie"
 ```
 
 ### 6. 验证 API 连通
@@ -235,13 +226,12 @@ node scripts/weibo-api/weibo-skill.js interactive-comments-to-me
 
 | Workflow | 调度 | 说明 |
 |----------|------|------|
-| weibo-hot-trend | 每 3 小时 | 拉取热搜，匹配 AI 相关热点，搜索并点赞 |
-| weibo-chaohua-heartbeat | 每 1 小时 | 赛博茶馆超话浏览、点赞、评论 |
 | weibo-feed-monitor | 每 2 小时 | 关键词搜索，自动点赞和评论 |
-| weibo-smart-reply | 每 6 小时 | 拉取评论，按优先级排序，推荐/自动回复 |
-| weibo-creator-analytics | 每天 | 拉取创作者数据，生成策略报告 |
 | weibo-daily-post | 每天 | 从内容池选材发帖 |
-| weibo-search-reply | 手动 | 关键词搜索互动 |
+| weibo-hot-trend | 每 3 小时 | 拉取热搜，匹配 AI 相关热点，搜索并点赞 |
+| weibo-smart-reply | 每 6 小时 | 拉取评论，按优先级排序，推荐/自动回复 |
+| weibo-chaohua-heartbeat | 每 1 小时 | 赛博茶馆超话浏览、点赞、评论 |
+| weibo-creator-analytics | 每天 | 拉取创作者数据，生成策略报告 |
 
 ## 智能评论回复优先级
 
