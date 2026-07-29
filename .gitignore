@@ -27,8 +27,8 @@ workflows/.locks/
 *.pcap
 
 # === Persona runtime data (keep templates, exclude runtime) ===
-locoagent/persona/operation-log.json
-locoagent/persona/analytics-report.md
+agent/persona/operation-log.json
+agent/persona/analytics-report.md
 
 # === Logs ===
 logs/
@@ -56,11 +56,11 @@ test-output.log
 
 # === Claude session data ===
 .claude/*
-locoagent/.claude/*
+agent/.claude/*
 
 # === Reference repos (not part of this project) ===
 ref-allinone/
-ref-locoagent/
+ref-agent/
 ref-memos/
 
 # === Certs ===
@@ -70,3 +70,7 @@ certs/
 tmp/
 *.tmp
 *.temp
+
+# Stale empty dirs (Windows lock, will clean up later)
+locoagent/
+agent/.git/

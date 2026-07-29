@@ -46,7 +46,7 @@ weiboagent/
 ├── setup.ps1                         # 一键安装脚本
 ├── .gitignore
 ├── README.md
-└── locoagent/                        # Agent 框架（基于 LocoAgent）
+└── agent/                        # Agent 框架（基于 LocoAgent）
     ├── .env.example                  # 环境变量模板
     ├── package.json
     ├── tsconfig.json
@@ -101,7 +101,7 @@ irm https://bun.sh/install.ps1 | iex
 pip install all-in-one-aione
 
 # Agent 依赖
-cd locoagent
+cd agent
 bun install
 ```
 
@@ -110,7 +110,7 @@ bun install
 获取 App ID 和 App Secret（通过微博开放平台或 @微博龙虾助手）：
 
 ```bash
-cd locoagent
+cd agent
 node scripts/weibo-api/weibo-skill.js login --app-id=<你的APP_ID> --app-secret=<你的APP_SECRET>
 ```
 
@@ -118,7 +118,7 @@ node scripts/weibo-api/weibo-skill.js login --app-id=<你的APP_ID> --app-secret
 
 ### 4. 配置 LLM
 
-编辑 `locoagent/.env`：
+编辑 `agent/.env`：
 
 ```env
 LLM_PROVIDER=deepseek
@@ -131,7 +131,7 @@ LLM_MODEL=deepseek-chat
 仅首页信息流浏览和关注/取关需要：
 
 ```bash
-cd locoagent
+cd agent
 
 # 启动隔离 Chrome
 bun run setup-chrome --target weibo
@@ -142,7 +142,7 @@ bun run setup-chrome --target weibo
 ### 6. 验证 API 连通
 
 ```bash
-cd locoagent
+cd agent
 
 # 测试热搜 API
 node scripts/weibo-api/weibo-skill.js hot-search --category=科技榜
@@ -156,7 +156,7 @@ node scripts/weibo-api/weibo-skill.js topic-details
 ### 交互模式
 
 ```bash
-cd locoagent
+cd agent
 bun start
 ```
 
@@ -171,7 +171,7 @@ bun start
 ### Workflow 定时调度
 
 ```bash
-cd locoagent
+cd agent
 
 # 启动超话心跳（每 1 小时）
 bun run scripts/workflow-engine.ts start --id weibo-chaohua-heartbeat
@@ -195,7 +195,7 @@ bun run scripts/workflow-engine.ts run --id weibo-creator-analytics
 ### 直接调用 API
 
 ```bash
-cd locoagent
+cd agent
 
 # 热搜榜
 node scripts/weibo-api/weibo-skill.js hot-search --category=科技榜
@@ -246,7 +246,7 @@ node scripts/weibo-api/weibo-skill.js interactive-comments-to-me
 
 ## Agent 人设
 
-Agent 名为 **小洛**，定位为 AI 科技观察者 & 内容创作者。关注领域：AI/LLM/Agent、开源项目、科技创业、编程、数码。详见 [persona/persona.md](locoagent/persona/persona.md)。
+Agent 名为 **小洛**，定位为 AI 科技观察者 & 内容创作者。关注领域：AI/LLM/Agent、开源项目、科技创业、编程、数码。详见 [persona/persona.md](agent/persona/persona.md)。
 
 ## 技术栈
 

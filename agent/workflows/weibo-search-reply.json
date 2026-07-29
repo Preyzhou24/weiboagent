@@ -1,0 +1,17 @@
+﻿{
+  "id": "weibo-search-reply",
+  "name": "Weibo Keyword Search & Reply (API)",
+  "description": "Search for specific keywords via Weibo Open API and engage with relevant posts through likes and comments",
+  "schedule": "manual",
+  "platform": "weibo",
+  "executor": "executors/weibo-search-reply.ts",
+  "config": {
+    "searchQueries": [
+      {"keyword": "AI agent", "pages": 1, "action": "like_and_comment"},
+      {"keyword": "开源工具", "pages": 1, "action": "like"},
+      {"keyword": "程序员", "pages": 1, "action": "like"}
+    ],
+    "maxTotalActions": 30,
+    "cooldownSeconds": 30
+  }
+}
