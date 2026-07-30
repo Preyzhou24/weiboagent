@@ -123,10 +123,20 @@ Stable API call — no browser automation needed.
 普通微博评论使用微博内部 Web API（通过浏览器上下文调用，绕过反机器人检测）：
 
 ```bash
-node scripts/web-comment.js comment --id=<weibo_id> --comment="这个思路很有启发！"
 ```
 
 **前提**: Chrome CDP 已启动并登录 weibo.com
+
+**ID 格式自动识别**: `--id` 同时接受数字 MID（如 `5326346139994630`）和 base62 ID（如 `NcU5a07Ib`）。base62 格式会自动转换为数字 MID，无需手动处理。
+
+**限流重试**: 当服务器返回 "操作繁忙" 时，脚本自动指数退避重试（30s→60s→120s，最多 3 次）。所有重试均失败后返回 `rate_limited` 标记，agent 应告知用户稍后再试：
+```json
+{
+  "code": -1,
+  "message": "评论限流，已重试 3 次仍失败",
+  "data": { "rate_limited": true, "reason": "操作繁忙,请稍后再试" }
+}
+```
 
 **权限限制处理**: 当博主设置了评论权限（如"仅关注100天以上的粉丝评论"），脚本会返回友好提示：
 ```json
