@@ -1,10 +1,10 @@
 {
-  "name": "locoagent",
-  "version": "1.1.0",
-  "description": "LocoAgent - AI-powered social media agent by LocoreMind",
+  "name": "weiboagent",
+  "version": "2.0.0",
+  "description": "WeiboAgent - AI-powered Weibo social media agent",
   "type": "module",
   "bin": {
-    "claude-clean": "./src/entrypoints/cli.tsx"
+    "weiboagent": "./src/entrypoints/cli.tsx"
   },
   "scripts": {
     "start": "bun run --preload ./stubs/globals.ts ./src/entrypoints/cli.tsx",

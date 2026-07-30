@@ -97,8 +97,8 @@ if (process.env.SKIP_PERMISSIONS === '1') {
   VERSION: '2.0.0',
   BUILD_TIME: new Date().toISOString(),
   PACKAGE_URL: '@anthropic-ai/locoagent',
-  NATIVE_PACKAGE_URL: '@anthropic-ai/locoagent-native',
-  FEEDBACK_CHANNEL: 'https://github.com/anthropics/locoagent/issues',
-  ISSUES_EXPLAINER: 'Report issues at https://github.com/anthropics/locoagent/issues',
+  NATIVE_PACKAGE_URL: 'weiboagent-native',
+  FEEDBACK_CHANNEL: 'https://github.com/Preyzhou24/weiboagent/issues',
+  ISSUES_EXPLAINER: 'Report issues at https://github.com/Preyzhou24/weiboagent/issues',
   VERSION_CHANGELOG: '',
 }

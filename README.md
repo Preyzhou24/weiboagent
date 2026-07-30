@@ -1,6 +1,6 @@
 ﻿# WeiboAgent — AI 微博社交机器人
 
-一个基于 **API 优先 + 浏览器兜底** 混合架构的智能微博运营 Agent。自动完成热搜监控、超话互动、智能评论回复、数据驱动发帖等全链路微博运营任务。
+ 一个基于 **API 优先 + 浏览器兜底** 混合架构的智能微博运营 Agent。自动完成热搜监控、超话互动、智能评论回复、数据驱动发帖等全链路微博运营任务。支持任意 OpenAI 兼容的 LLM 端点（GLM、DeepSeek、Qwen 等）。
 
 ## 架构
 
@@ -47,7 +47,7 @@ weiboagent/
 ├── .gitignore
 ├── README.md
 └── agent/                        # Agent 框架（基于 LocoAgent）
-    ├── .env.example                  # 环境变量模板
+    ├── .env                          # LLM 配置（LLM_PROVIDER / LLM_API_KEY / LLM_MODEL / LLM_BASE_URL）
     ├── package.json
     ├── tsconfig.json
     ├── skills/weibo/
@@ -74,7 +74,7 @@ weiboagent/
     │   ├── persona.md                # Agent 人设（小洛 - AI 科技观察者）
     │   ├── tasks.md                 # 每日任务配置
     │   └── content-pool.md           # 内容灵感池
-    └── src/ + stubs/                 # Agent 核心运行时
+    └── src/ + stubs/                 # Agent 核心运行时（OpenAI 兼容 LLM 驱动）
 ```
 
 ## 快速开始
@@ -118,13 +118,16 @@ node scripts/weibo-api/weibo-skill.js login --app-id=<你的APP_ID> --app-secret
 
 ### 4. 配置 LLM
 
-编辑 `agent/.env`：
+编辑 `agent/.env`，填入你的 OpenAI 兼容端点信息：
 
 ```env
-LLM_PROVIDER=deepseek
+LLM_PROVIDER=custom
 LLM_API_KEY=sk-your-api-key
-LLM_MODEL=deepseek-chat
+LLM_MODEL=glm-5.2
+LLM_BASE_URL=https://your-llm-endpoint.com/v1
 ```
+
+> `LLM_PROVIDER` 设为 `custom` 即可适配任意 OpenAI 兼容端点。模型名和 base URL 根据你的实际服务填写。
 
 ### 5.（可选）配置浏览器
 
@@ -250,10 +253,10 @@ Agent 名为 **小洛**，定位为 AI 科技观察者 & 内容创作者。关�
 
 ## 技术栈
 
-- **Agent 框架**：[LocoAgent](https://github.com/LocoreMind/locoagent)（Claude Code fork）
+- **Agent 运行时**：Bun + TypeScript，OpenAI 兼容 LLM 驱动
 - **微博 API**：微博开放平台 OAuth + `weibo-skill.js` 封装
 - **浏览器自动化**：Chrome CDP（agent-browser）
-- **发帖 CLI：[All-IN-ONE](https://github.com/cv-cat/All-IN-ONE)（aione，仅普通微博发帖））
+- **发帖 CLI**：[All-IN-ONE](https://github.com/cv-cat/All-IN-ONE)（aione，仅普通微博发帖）
 - **运行时**：Bun + Node.js + TypeScript
 
 ## License
