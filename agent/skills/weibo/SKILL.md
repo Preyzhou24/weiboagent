@@ -9,7 +9,7 @@ user-invocable: true
 
 Platform-specific operation sequences for Weibo. Uses a **hybrid API-first approach**:
 - **Weibo Open API** (`node scripts/weibo-api/weibo-skill.js <command>`) — all structured operations: search, hot trends, posting, commenting, replying, liking, creator analytics, interactive analysis, super topic engagement
-- **All-IN-ONE CLI** (`aione weibo ...`) — legacy fallback for basic search/user info/posting
+- **All-IN-ONE CLI** (`aione weibo ...`) — only for posting to personal timeline (no API alternative)
 - **agent-browser** (Chrome CDP) — browser-only ops: home feed browsing, follow/unfollow
 
 **API auth**: OAuth App ID + App Secret → auto-managed Token (cached + auto-refresh)
@@ -47,12 +47,10 @@ node scripts/weibo-api/weibo-skill.js login --app-id=<APP_ID> --app-secret=<APP_
 
 After login, the script auto-caches credentials and Token. Subsequent commands auto-read cached Token and refresh before expiry — no manual management needed.
 
-### All-IN-ONE CLI Setup (Legacy fallback)
+### All-IN-ONE CLI Setup (Posting only)
 
 ```bash
-pip install all-in-one-aione
-aione auth weibo set-cookie --profile web --cookie "YOUR_COOKIE"
-aione auth weibo set-cookie --profile creator --cookie "YOUR_CREATOR_COOKIE"
+pip install all-in-one-aione\naione auth weibo set-cookie --profile creator --cookie "YOUR_CREATOR_COOKIE"  # Only creator cookie needed for posting
 ```
 
 ### Browser Setup (For feed browsing and follow/unfollow only)

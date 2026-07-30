@@ -77,8 +77,8 @@ try {
 }
 Pop-Location
 
-# --- Step 5: Install All-IN-ONE CLI ---
-Write-Host "[5/5] Installing All-IN-ONE CLI..." -ForegroundColor Yellow
+# --- Step 5: Install All-IN-ONE CLI (for daily posting only) ---
+Write-Host "[5/5] Installing All-IN-ONE CLI (posting only)..." -ForegroundColor Yellow
 try {
     pip install all-in-one-aione
     aione setup
@@ -97,8 +97,7 @@ Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Edit agent\.env and add your DeepSeek API key" -ForegroundColor White
 Write-Host "  2. Configure Weibo cookies:" -ForegroundColor White
-Write-Host "     aione auth weibo set-cookie --profile web --cookie `"<cookie>`"" -ForegroundColor White
-Write-Host "     aione auth weibo set-cookie --profile creator --cookie `"<cookie>`"" -ForegroundColor White
+Write-Host "Write-Host "     aione auth weibo set-cookie --profile creator --cookie `"<cookie>`"" -ForegroundColor White
 Write-Host "  3. Launch Chrome for Weibo:" -ForegroundColor White
 Write-Host "     cd agent && bun run setup-chrome --target weibo" -ForegroundColor White
 Write-Host "     (Log into weibo.com in the opened Chrome window)" -ForegroundColor White

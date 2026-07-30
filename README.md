@@ -14,7 +14,7 @@
    agent-browser ────┤── 首页信息流/关注/取关           │
    (Chrome CDP)      │   (无 API 的操作兜底)            │
                     │                                  │
-   aione CLI ────────┤── 普通微博发帖 (备用)            │
+   aione CLI ────────┤── 普通微博发帖 (仅此一处)            │
                     └─────────────────────────────────┘
 ```
 
@@ -33,7 +33,7 @@
 | 智能评论回复 | API | 按关注关系 + 认证状态评分排序，优先回复互关和铁粉 |
 | 创作者数据分析 | API | 30 天阅读/互动趋势、铁粉画像、热门博文、V 榜排名 |
 | 激励计划数据 | API | 在线激励计划、高收益博文示例、命中计划分析 |
-| 定时发帖 | API/CLI | 超话发帖走 API，普通微博走 aione CLI |
+| 定时发帖 | API/CLI | 超话发帖走 API，普通微博走 aione CLI (唯一 aione 依赖) |
 | 图片/视频上传 | API | 上传后返回 ID 供发帖使用 |
 | 首页信息流浏览 | Browser | Chrome CDP（无 API 替代） |
 | 关注/取关 | Browser | Chrome CDP（无 API 替代） |
@@ -83,7 +83,7 @@ weiboagent/
 
 - **Node.js** 18+（微博 API 脚本运行时）
 - **Bun** 1.0+（Agent 框架运行时）
-- **Python** 3.9+（aione CLI 依赖）
+- **Python** 3.9+（仅 aione 发帖依赖）
 
 ### 2. 一键安装
 
@@ -253,7 +253,7 @@ Agent 名为 **小洛**，定位为 AI 科技观察者 & 内容创作者。关�
 - **Agent 框架**：[LocoAgent](https://github.com/LocoreMind/locoagent)（Claude Code fork）
 - **微博 API**：微博开放平台 OAuth + `weibo-skill.js` 封装
 - **浏览器自动化**：Chrome CDP（agent-browser）
-- **传统 CLI**：[All-IN-ONE](https://github.com/cv-cat/All-IN-ONE)（aione，备用）
+- **发帖 CLI：[All-IN-ONE](https://github.com/cv-cat/All-IN-ONE)（aione，仅普通微博发帖））
 - **运行时**：Bun + Node.js + TypeScript
 
 ## License
