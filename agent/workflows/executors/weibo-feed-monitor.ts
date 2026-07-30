@@ -18,6 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const LOG_SCRIPT = resolve(ROOT, "scripts", "log-operation.ts");
 const WEIBO_API = resolve(ROOT, "scripts", "weibo-api", "weibo-skill.js");
+const WEB_COMMENT = resolve(ROOT, "scripts", "web-comment.js");
 
 // -- Config ----------------------------------------------------------------
 
@@ -94,15 +95,22 @@ function likePost(postId: string): boolean {
   return result && result.code === 0;
 }
 
-/** Comment on a post via API */
-function commentOnPost(postId: string, text: string): boolean {
-  if (!postId) return false;
-  const result = weiboApi("comment", [
-    `--id=${postId}`,
-    `--comment=${text}`,
-    `--model=deepseek`,
-  ]);
-  return result && result.code === 0;
+/** Comment on a post via web-comment (internal Web API) */
+function commentOnPost(postId: string, text: string): { ok: boolean; restriction?: boolean; message?: string } {
+  if (!postId) return { ok: false };
+  try {
+    const out = execSync(`node "${WEB_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
+      encoding: "utf-8",
+      timeout: 20000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const result = JSON.parse(out.trim());
+    if (result.code === 0) return { ok: true };
+    // restriction or failure
+    return { ok: false, restriction: result.data?.restriction, message: result.message };
+  } catch {
+    return { ok: false, message: "web-comment 执行失败" };
+  }
 }
 
 /** Check if we already performed an action on this URL (exit 0 = done) */
@@ -180,9 +188,16 @@ async function main() {
         const text =
           commentTemplates[Math.floor(Math.random() * commentTemplates.length)];
         console.log(`    Commenting: ${url || postId}`);
-        const ok = commentOnPost(postId, text);
-        logOperation("comment", url, ok ? "success" : "failed", text);
-        if (ok) comments++;
+        const result = commentOnPost(postId, text);
+        if (result.ok) {
+          comments++;
+          logOperation("comment", url, "success", text);
+        } else if (result.restriction) {
+          console.log(`    ⚠ 评论受限: ${result.message}`);
+          logOperation("comment", url, "restricted", result.message);
+        } else {
+          logOperation("comment", url, "failed", result.message ?? text);
+        }
         actions++;
         await Bun.sleep(5000);
       }

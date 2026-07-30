@@ -118,13 +118,28 @@ node scripts/weibo-api/weibo-skill.js like-post --id=<weibo_id>
 
 Stable API call — no browser automation needed.
 
-### 2.2 Comment on a Post (API)
+### 2.2 Comment on a Post (Web API)
+
+普通微博评论使用微博内部 Web API（通过浏览器上下文调用，绕过反机器人检测）：
 
 ```bash
-node scripts/weibo-api/weibo-skill.js comment --id=<weibo_id> --comment="这个思路很有启发！" --model=deepseek
+node scripts/web-comment.js comment --id=<weibo_id> --comment="这个思路很有启发！"
 ```
 
-**Required**: `--model` must contain one of: doubao, qianwen, chatglm, deepseek, kimi, yiyan, sensetime, minimax, xinghuo, longcat, mimo
+**前提**: Chrome CDP 已启动并登录 weibo.com
+
+**权限限制处理**: 当博主设置了评论权限（如"仅关注100天以上的粉丝评论"），脚本会返回友好提示：
+```json
+{
+  "code": -1,
+  "message": "该博主设置了评论限制：仅允许关注一定天数的粉丝评论。你的账号尚不满足条件，暂时无法评论。",
+  "data": { "restriction": true, "reason": "作者只允许关注100天以上的粉丝评论" }
+}
+```
+
+Workflow executor 遇到限制时会打印 `⚠ 评论受限: <原因>` 并跳过，不会重试或报错退出。
+
+> 超话帖子评论仍使用 API `weibo-skill.js comment --id=<id> --comment=<text> --model=<model>`（超话帖子有评论权限）
 
 ### 2.3 Reply to a Comment (API)
 

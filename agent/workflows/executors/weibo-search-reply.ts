@@ -1,8 +1,9 @@
 ﻿#!/usr/bin/env bun
 /**
- * Weibo Keyword Search & Reply Workflow Executor (API)
+ * Weibo Keyword Search & Reply Workflow Executor (API + Web Comment)
  *
  * Searches specific keywords via Weibo Open API and engages with relevant posts.
+ * Likes via API, comments via web-comment (internal Web API).
  *
  * Run: bun run workflow run --id weibo-search-reply
  */
@@ -15,6 +16,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const LOG_SCRIPT = resolve(ROOT, "scripts", "log-operation.ts");
 const WEIBO_API = resolve(ROOT, "scripts", "weibo-api", "weibo-skill.js");
+const WEB_COMMENT = resolve(ROOT, "scripts", "web-comment.js");
 
 interface Config {
   searchQueries?: { keyword: string; pages: number; action: string }[];
@@ -50,6 +52,22 @@ function searchWeibo(keyword: string): any[] {
   const msg = result.data?.msg ?? "";
   const mblogIds = [...new Set([...msg.matchAll(/mblogid=(\d+)/g)].map((m) => m[1]))];
   return mblogIds.map((id) => ({ id, mid: id, url: `https://weibo.com/detail/${id}` }));
+}
+
+function commentOnPost(postId: string, text: string): { ok: boolean; restriction?: boolean; message?: string } {
+  if (!postId) return { ok: false };
+  try {
+    const out = execSync(`node "${WEB_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
+      encoding: "utf-8",
+      timeout: 20000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const result = JSON.parse(out.trim());
+    if (result.code === 0) return { ok: true };
+    return { ok: false, restriction: result.data?.restriction, message: result.message };
+  } catch {
+    return { ok: false, message: "web-comment 执行失败" };
+  }
 }
 
 function alreadyDone(action: string, url: string): boolean {
@@ -88,6 +106,7 @@ async function main() {
       const url = post.url;
       if (!post.id || alreadyDone("search-like", url)) continue;
 
+      // Like via API
       if (query.action === "like" || query.action === "like_and_comment") {
         const result = weiboApi("like-post", [`--id=${post.id}`]);
         const ok = result && result.code === 0;
@@ -97,6 +116,24 @@ async function main() {
           console.log(`    Liked: ${url}`);
         }
         await Bun.sleep(4000);
+      }
+
+      // Comment via web-comment (internal Web API)
+      if (query.action === "like_and_comment" && totalActions < maxTotalActions) {
+        const comments = ["这个思路很有启发！", "收藏了，有价值的内容。", "同意，这个方向值得关注。", "好文，学习了。"];
+        const text = comments[Math.floor(Math.random() * comments.length)];
+        const cResult = commentOnPost(post.id, text);
+        if (cResult.ok) {
+          totalActions++;
+          logOperation("search-comment", url, "success", text);
+          console.log(`    Commented: ${url}`);
+        } else if (cResult.restriction) {
+          console.log(`    ⚠ 评论受限: ${cResult.message}`);
+          logOperation("search-comment", url, "restricted", cResult.message ?? "");
+        } else {
+          logOperation("search-comment", url, "failed", cResult.message ?? text);
+        }
+        await Bun.sleep(5000);
       }
     }
   }
