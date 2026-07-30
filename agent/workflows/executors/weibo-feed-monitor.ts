@@ -101,7 +101,7 @@ function commentOnPost(postId: string, text: string): { ok: boolean; restriction
   try {
     const out = execSync(`node "${WEB_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
       encoding: "utf-8",
-      timeout: 20000,
+      timeout: 300000,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const result = JSON.parse(out.trim());
@@ -199,7 +199,7 @@ async function main() {
           logOperation("comment", url, "failed", result.message ?? text);
         }
         actions++;
-        await Bun.sleep(5000);
+        await Bun.sleep(15000 + Math.random() * 15000);
       }
     }
   }

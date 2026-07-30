@@ -137,6 +137,13 @@ Stable API call — no browser automation needed.
   "data": { "rate_limited": true, "reason": "操作繁忙,请稍后再试" }
 }
 ```
+**双通道限流应对**: `web-comment.js` 使用双通道策略对抗限流：
+1. **Web 通道** (weibo.com `/ajax/comments/create`) — 主通道
+2. **移动端通道** (m.weibo.cn `/api/comments/create`) — Web 限流时自动切换，PC 端和移动端有独立的限流计数器
+
+每个通道维护 90 秒冷却期（`~/.weibo-skill/comment-cooldown.json`），限流后自动跳到另一通道。双通道均限流时指数退避重试（30s→60s→120s，交替通道）。权限限制不重试，直接返回。
+
+Workflow executor 评论间已内置 15-30 秒随机延迟，从源头降低触发限流的概率。
 
 **权限限制处理**: 当博主设置了评论权限（如"仅关注100天以上的粉丝评论"），脚本会返回友好提示：
 ```json
