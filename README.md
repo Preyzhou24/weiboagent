@@ -296,6 +296,16 @@
  - **aione 搜索**：[All-IN-ONE](https://github.com/cv-cat/All-IN-ONE) cookie 驱动的结构化搜索
  - **运行时**：Bun + Node.js + TypeScript
  
- ## License
- 
- MIT
+- **运行时**：Bun + Node.js + TypeScript
+
+## 参考项目
+
+本项目的实现参考了以下开源项目，感谢它们的作者：
+
+- [LocoAgent](https://github.com/IdanTestSomething/LocoAgent) — Agent 框架与 LLM 编排参考
+- [All-IN-ONE](https://github.com/cv-cat/All-IN-ONE) — aione 发帖/搜索 CLI，本项目直接复用
+- [weibo-skills](https://skillsmp.com/creators/wecode-ai/openclaw-weibo/skills-independent-weibo-skill) — 微博 Open API 封装与技能编排参考
+
+## License
+
+MIT
