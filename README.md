@@ -6,15 +6,15 @@
  
  ```
                      ┌─────────────────────────────────┐
-                     │         WeiboAgent               │
-                     │                                  │
-    Weibo Open API ──┤── 点赞/评论/回复/搜索/发帖/超话  │
-    (OAuth Token)     │   热搜/创作者数据/激励计划       │
-                     │                                  │
-    agent-browser ────┤── 首页信息流/关注/取关/评论     │
-    (Chrome CDP)      │   (无 API 的操作兜底)            │
-                     │                                  │
-    aione CLI ────────┤── 关键词搜索 (cookie 驱动)       │
+                     │         WeiboAgent              │
+                     │                                 │
+    Weibo Open API ──┤── 点赞/评论/回复/搜索/发帖/超话   │
+    (OAuth Token)    │   热搜/创作者数据/激励计划        │
+                     │                                 │
+    agent-browser ───┤── 首页信息流/关注/取关/评论       │
+    (Chrome CDP)     │                                 │
+                     │                                 │
+    aione CLI ───────┤── 关键词搜索 (cookie 驱动)       │
                      └─────────────────────────────────┘
  ```
  
