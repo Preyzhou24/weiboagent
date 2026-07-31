@@ -94,12 +94,15 @@ function logOperation(action: string, url: string, status: string, note?: string
 
 async function main() {
   console.log("[Weibo Chaohua Heartbeat] Starting...");
-  let totalActions = 0;
-  let totalLikes = 0;
-  let totalComments = 0;
+ let totalActions = 0;
+ let totalLikes = 0;
+ let totalComments = 0;
+ let consecutiveFailures = 0;
+ const MAX_CONSECUTIVE_FAILURES = 3;
+ let shouldStop = false;
 
-  // Step 1: Discover available topics if not configured
-  let activeTopics = topics;
+ // Step 1: Discover available topics if not configured
+ let activeTopics = topics;
   if (topics.length === 0 || topics[0] === "auto") {
     console.log("  Discovering available super topics...");
     const result = weiboApi("topic-details");
@@ -110,9 +113,10 @@ async function main() {
   }
 
   // Step 2: Engage with each topic
-  for (const topic of activeTopics) {
-    console.log(`\n  Topic: ${topic}`);
-    let topicActions = 0;
+ for (const topic of activeTopics) {
+   if (shouldStop) break;
+   console.log(`\n  Topic: ${topic}`);
+   let topicActions = 0;
 
     // Browse timeline
     const timelineResult = weiboApi("timeline", [`--topic=${topic}`, `--page=1`, `--count=10`]);
@@ -124,25 +128,35 @@ async function main() {
     const posts = timelineResult?.data?.statuses ?? [];
     console.log(`    Found ${posts.length} posts in timeline`);
 
-    for (const post of posts) {
-      if (topicActions >= maxActionsPerTopic) break;
+   for (const post of posts) {
+     if (topicActions >= maxActionsPerTopic) break;
+     if (shouldStop) break;
 
-      const postId = post.id ?? post.mid ?? "";
-      const url = post.url ?? `weibo://topic/${topic}/${postId}`;
-      if (!postId) continue;
+     const postId = post.id ?? post.mid ?? "";
+     const url = post.url ?? `weibo://topic/${topic}/${postId}`;
+     if (!postId) continue;
 
       // Like via API
       if (likeEnabled && !alreadyDone("topic-like", url)) {
         const result = weiboApi("like-post", [`--id=${postId}`]);
-        const ok = result && result.code === 0;
-        logOperation("topic-like", url, ok ? "success" : "failed", `topic:${topic}`);
-        if (ok) {
-          totalLikes++;
-          topicActions++;
-          totalActions++;
-          console.log(`    Liked: ${postId}`);
-        }
-        await Bun.sleep(3000);
+       const ok = result && result.code === 0;
+       logOperation("topic-like", url, ok ? "success" : "failed", `topic:${topic}`);
+       if (ok) {
+         totalLikes++;
+         topicActions++;
+         totalActions++;
+         consecutiveFailures = 0;
+         console.log(`    Liked: ${postId}`);
+       }
+       else {
+         consecutiveFailures++;
+         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+           console.log(`  ⚠ 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，停止执行以避免限流`);
+           shouldStop = true;
+           break;
+         }
+       }
+       await Bun.sleep(3000);
       }
 
       // Comment via API
@@ -153,15 +167,24 @@ async function main() {
           `--comment=${text}`,
           `--model=${model}`,
         ]);
-        const ok = result && result.code === 0;
-        logOperation("topic-comment", url, ok ? "success" : "failed", `topic:${topic}:${text.slice(0, 30)}`);
-        if (ok) {
-          totalComments++;
-          topicActions++;
-          totalActions++;
-          console.log(`    Commented: ${postId}`);
-        }
-        await Bun.sleep(5000);
+       const ok = result && result.code === 0;
+       logOperation("topic-comment", url, ok ? "success" : "failed", `topic:${topic}:${text.slice(0, 30)}`);
+       if (ok) {
+         totalComments++;
+         topicActions++;
+         totalActions++;
+         consecutiveFailures = 0;
+         console.log(`    Commented: ${postId}`);
+       }
+       else {
+         consecutiveFailures++;
+         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+           console.log(`  ⚠ 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，停止执行以避免限流`);
+           shouldStop = true;
+           break;
+         }
+       }
+       await Bun.sleep(5000);
       }
     }
   }

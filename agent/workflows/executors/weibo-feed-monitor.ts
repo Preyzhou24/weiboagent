@@ -1,11 +1,17 @@
-﻿#!/usr/bin/env bun
+#!/usr/bin/env bun
 /**
  * Weibo Feed Monitor & Auto-Engage Workflow Executor (API-first refactor)
  *
  * Searches Weibo for keywords via Weibo Open API (weibo-skill.js search),
- * then for each undiscovered post uses API to like and comment.
- * Falls back to agent-browser only when API is unavailable.
+ * then for each undiscovered post uses API to like and agent-browser to comment.
  * Logs every action for cross-session dedup.
+ *
+ * 整合改进: 与 weibo-search-reply.ts 共用同一套节流/熔断/日上限逻辑——
+ *  1. 日上限预检 (dailyLikeCap/dailyCommentCap) 启动即查，超限退出。
+ *  2. 限流熔断: like/comment 命中限流立即终止本轮，不再硬刷。
+ *  3. 真实错误码: 失败 note 记录 API 返回的 code/msg。
+ *  4. like 间隔提升: 旧版 3s 过密，默认提升到 9s±2s。
+ *  5. 权限限制归类: 评论受限按 restricted 跳过，不触发熔断。
  *
  * Run: bun run workflow daemon --id weibo-feed-monitor --interval 120
  */
@@ -13,18 +19,42 @@
 import { execSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const LOG_SCRIPT = resolve(ROOT, "scripts", "log-operation.ts");
 const WEIBO_API = resolve(ROOT, "scripts", "weibo-api", "weibo-skill.js");
-const WEB_COMMENT = resolve(ROOT, "scripts", "web-comment.js");
+const BROWSER_COMMENT = resolve(ROOT, "scripts", "browser-comment.js");
+const WEIBO_SEARCH = resolve(ROOT, "scripts", "weibo-api", "weibo-search.js");
+const AI_COMMENT = resolve(ROOT, "scripts", "ai-comment.js");
 
-// -- Config ----------------------------------------------------------------
+const POST_COOLDOWN_FILE = join(homedir(), ".weibo-skill", "post-cooldown.json");
+const POST_COOLDOWN_MS = 10 * 60 * 1000; // 10 分钟账号级冷却
+
+/** 读取「刚发帖」冷却标记，返回剩余冷却毫秒数（0 = 已过冷却期） */
+function getPostCooldownRemaining(): number {
+  try {
+    if (!existsSync(POST_COOLDOWN_FILE)) return 0;
+    const data = JSON.parse(readFileSync(POST_COOLDOWN_FILE, "utf-8"));
+    const elapsed = Date.now() - data.ts;
+    return Math.max(0, POST_COOLDOWN_MS - elapsed);
+  } catch {
+    return 0;
+  }
+}
 
 interface Config {
   searchKeywords?: string[];
   maxActionsPerRun?: number;
+  dailyLikeCap?: number;
+  dailyCommentCap?: number;
+  hourlyCommentCap?: number;
+  likeIntervalMs?: number;
+  commentIntervalMs?: number;
+  commentJitterMs?: number;
   engagementRules?: {
     like?: { enabled?: boolean; maxPerRun?: number };
     comment?: { enabled?: boolean; maxPerRun?: number; commentTemplates?: string[] };
@@ -35,21 +65,34 @@ const configArg = process.argv.find((_, i, a) => a[i - 1] === "--config");
 const config: Config = configArg ? JSON.parse(configArg) : {};
 const keywords = config.searchKeywords ?? ["AI agent", "大模型", "LLM"];
 const maxActions = config.maxActionsPerRun ?? 20;
+const dailyLikeCap = config.dailyLikeCap ?? 30;
+const dailyCommentCap = config.dailyCommentCap ?? 15;
+const hourlyCommentCap = config.hourlyCommentCap ?? 10;
+const likeIntervalMs = config.likeIntervalMs ?? 9000;
+const commentIntervalMs = config.commentIntervalMs ?? 20000;
+const commentJitterMs = config.commentJitterMs ?? 10000;
 const likeEnabled = config.engagementRules?.like?.enabled ?? true;
 const likeMax = config.engagementRules?.like?.maxPerRun ?? 10;
 const commentEnabled = config.engagementRules?.comment?.enabled ?? true;
 const commentMax = config.engagementRules?.comment?.maxPerRun ?? 3;
-const commentTemplates =
-  config.engagementRules?.comment?.commentTemplates ?? [
-    "这个思路很有启发！",
-    "收藏了，很有价值的内容。",
-    "同意，这个方向值得关注。",
-    "好文，学习了。",
-  ];
+
+/** 用 AI 根据原微博正文生成个性化评论（替代固定模板） */
+function generateAiComment(content: string, user: string): string {
+  try {
+    const out = execSync(
+      `node "${AI_COMMENT}" generate --content=${JSON.stringify(content)} --user=${JSON.stringify(user)}`,
+      { encoding: "utf-8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"] }
+    );
+    const result = JSON.parse(out.trim());
+    if (result.code === 0 && result.comment) return result.comment;
+  } catch {
+    // AI 不可用时降级
+  }
+  return "这个观点很有启发！";
+}
 
 // -- Helpers ---------------------------------------------------------------
 
-/** Run weibo-skill.js command and return parsed JSON */
 function weiboApi(command: string, args: string[] = []): any {
   const argStr = args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(" ");
   try {
@@ -64,101 +107,138 @@ function weiboApi(command: string, args: string[] = []): any {
   }
 }
 
-/** Search Weibo via API (智搜) — returns AI summary with embedded mblogid references */
 function searchWeibo(keyword: string): any[] {
-  const result = weiboApi("search", [`--query=${keyword}`]);
-  if (!result || result.code !== 0) return [];
-  // 智搜 returns AI summary in data.msg with embedded mblogid references
-  const msg = result.data?.msg ?? "";
-  const mblogIds = [...new Set([...msg.matchAll(/mblogid=(\d+)/g)].map(m => m[1]))];
-  return mblogIds.map(id => ({ id: id, mid: id, url: `https://weibo.com/detail/${id}` }));
+  // 整合 aione: cookie 驱动的结构化搜索替代 OAuth 智搜正则扒 ID。
+  try {
+    const out = execSync(`node "${WEIBO_SEARCH}" search --query=${JSON.stringify(keyword)} --page=1`, {
+      encoding: "utf-8", timeout: 30000, stdio: ["pipe", "pipe", "pipe"],
+    });
+    const result = JSON.parse(out.trim());
+    if (!result || result.code !== 0) return [];
+    return (result.data ?? []).map((p: any) => ({ id: p.id, mid: p.id, url: p.url, content: p.content, user: p.user }));
+  } catch {
+    return [];
+  }
 }
 
-/** Extract a post ID from search result */
-function getPostId(post: any): string {
-  return post.id ?? post.mid ?? post.weibo_id ?? "";
-}
-
-/** Extract a URL from search result (for dedup logging) */
 function getPostUrl(post: any): string {
   if (post.url) return post.url;
   if (post.link) return post.link;
-  const id = getPostId(post);
-  const uid = post.user_id ?? post.uid ?? post.userid ?? "";
-  return id ? `https://weibo.com/${uid}/${id}` : "";
+  const id = post.id ?? post.mid ?? post.weibo_id ?? "";
+  return id ? `https://weibo.com/detail/${id}` : "";
 }
 
-/** Like a post via API */
-function likePost(postId: string): boolean {
-  if (!postId) return false;
-  const result = weiboApi("like-post", [`--id=${postId}`]);
-  return result && result.code === 0;
+/** 从 API 返回中提取可读错误信息 */
+function extractError(result: any, fallback: string): string {
+  if (!result) return fallback;
+  const code = result.code ?? result.errno ?? "?";
+  const msg = result.msg ?? result.message ?? result.data?.msg ?? result.data?.reason ?? "";
+  return msg ? `code=${code} ${msg}` : `code=${code}`;
 }
 
-/** Comment on a post via web-comment (internal Web API) */
-function commentOnPost(postId: string, text: string): { ok: boolean; restriction?: boolean; message?: string } {
+/** 判断 like 失败是否属于限流（触发熔断） */
+function isRateLimited(result: any): boolean {
+  const text = `${result?.msg ?? ""} ${result?.message ?? ""} ${result?.data?.reason ?? ""}`;
+  return /频繁|繁忙|稍后再试|rate.?limit|too many/i.test(text);
+}
+
+function commentOnPost(postId: string, text: string): { ok: boolean; restriction?: boolean; rateLimited?: boolean; message?: string } {
   if (!postId) return { ok: false };
   try {
-    const out = execSync(`node "${WEB_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
+    const out = execSync(`node "${BROWSER_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
       encoding: "utf-8",
       timeout: 300000,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const result = JSON.parse(out.trim());
     if (result.code === 0) return { ok: true };
-    // restriction or failure
-    return { ok: false, restriction: result.data?.restriction, message: result.message };
+    return {
+      ok: false,
+      restriction: result.data?.restriction === true,
+      rateLimited: result.data?.rate_limited === true,
+      message: result.message,
+    };
   } catch {
-    return { ok: false, message: "web-comment 执行失败" };
+    return { ok: false, message: "browser-comment 执行失败" };
   }
 }
 
-/** Check if we already performed an action on this URL (exit 0 = done) */
 function alreadyDone(action: string, url: string): boolean {
   try {
-    execSync(
-      `bun run "${LOG_SCRIPT}" check --platform weibo --action ${action} --url "${url}"`,
-      { encoding: "utf-8", timeout: 5000, stdio: "pipe" }
-    );
-    return true; // exit 0 = already done
+    execSync(`bun run "${LOG_SCRIPT}" check --platform weibo --action ${action} --url "${url}"`, {
+      encoding: "utf-8", timeout: 5000, stdio: "pipe",
+    });
+    return true;
   } catch {
-    return false; // exit 1 = not done
+    return false;
   }
 }
 
 function logOperation(action: string, url: string, status: string, note?: string) {
-  const args = [
-    "bun",
-    "run",
-    LOG_SCRIPT,
-    "add",
-    "--platform",
-    "weibo",
-    "--action",
-    action,
-    "--url",
-    url,
-    "--status",
-    status,
-  ];
+  const args = ["bun", "run", LOG_SCRIPT, "add", "--platform", "weibo", "--action", action, "--url", url, "--status", status];
   if (note) args.push("--note", note);
   try {
     execSync(args.join(" "), { encoding: "utf-8", timeout: 5000 });
+  } catch { /* best-effort */ }
+}
+
+function dailyCounts(): { likeFamily: number; commentFamily: number } {
+  try {
+    const out = execSync(`bun run "${LOG_SCRIPT}" daily-count --platform weibo`, {
+      encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
+    });
+    const d = JSON.parse(out.trim());
+    return { likeFamily: d.likeFamily ?? 0, commentFamily: d.commentFamily ?? 0 };
   } catch {
-    /* best-effort */
+    return { likeFamily: 0, commentFamily: 0 };
   }
+}
+
+/** 读取过去 1 小时已成功评论数，供每小时限流 */
+function hourlyCommentCount(): number {
+  try {
+    const out = execSync(`bun run "${LOG_SCRIPT}" hourly-count --platform weibo --hours 1`, {
+      encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"],
+    });
+    const d = JSON.parse(out.trim());
+    return d.commentFamily ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function jitter(base: number, max: number): number {
+  return base + Math.floor(Math.random() * max);
 }
 
 // -- Main ------------------------------------------------------------------
 
 async function main() {
   console.log("[Weibo Feed Monitor] Starting scan (API mode)...");
+
+  // 发帖后冷却检查：如果刚发完帖，等待账号级风控窗口过去再评论
+  const postCooldownRemaining = getPostCooldownRemaining();
+  if (postCooldownRemaining > 0) {
+    const waitSec = Math.ceil(postCooldownRemaining / 1000);
+    console.log(`  检测到刚发帖，等待 ${waitSec}s 账号级冷却（避免 update weibo too fast）...`);
+    await Bun.sleep(postCooldownRemaining);
+  }
+
+  const counts = dailyCounts();
+  console.log(`  今日已成功: like=${counts.likeFamily}/${dailyLikeCap}, comment=${counts.commentFamily}/${dailyCommentCap}`);
+  if (counts.likeFamily >= dailyLikeCap && counts.commentFamily >= dailyCommentCap) {
+    console.log("  日上限已满，跳过本轮。");
+    return;
+  }
+
   let actions = 0;
   let likes = 0;
   let comments = 0;
+ let circuitBroken = false;
+ let consecutiveFailures = 0;
 
-  for (const keyword of keywords) {
-    if (actions >= maxActions) break;
+ outer: for (const keyword of keywords) {
+    if (actions >= maxActions || circuitBroken) break;
     console.log(`  Searching: "${keyword}"`);
     const posts = searchWeibo(keyword);
     if (!Array.isArray(posts) || posts.length === 0) {
@@ -168,44 +248,79 @@ async function main() {
     console.log(`    Found ${posts.length} posts`);
 
     for (const post of posts) {
-      if (actions >= maxActions) break;
-      const postId = getPostId(post);
+      if (actions >= maxActions || circuitBroken) break;
+      const postId = post.id ?? post.mid ?? "";
       const url = getPostUrl(post);
       if (!postId && !url) continue;
 
+      const likeOkCap = counts.likeFamily + likes < dailyLikeCap;
+      const commentOkCap = counts.commentFamily + comments < dailyCommentCap;
+
       // Like via API
-      if (likeEnabled && likes < likeMax && !alreadyDone("like", url)) {
+      if (likeEnabled && likes < likeMax && likeOkCap && !alreadyDone("search-like", url)) {
         console.log(`    Liking: ${url || postId}`);
-        const ok = likePost(postId);
-        logOperation("like", url, ok ? "success" : "failed");
-        if (ok) likes++;
-        actions++;
-        await Bun.sleep(3000); // rate-limit safety
+        const result = weiboApi("like-post", [`--id=${postId}`]);
+        const ok = result && result.code === 0;
+       if (ok) {
+         likes++;
+         consecutiveFailures = 0;
+         logOperation("search-like", url, "success", keyword);
+       } else {
+          const note = `${keyword} | ${extractError(result, "like failed")}`;
+          logOperation("search-like", url, "failed", note);
+          console.log(`    Like failed: ${note}`);
+         if (isRateLimited(result)) {
+           console.log("    ⚠ 命中限流，熔断本轮剩余操作。");
+           circuitBroken = true;
+           break outer;
+         }
+         consecutiveFailures++;
+         if (consecutiveFailures >= 3) {
+           console.log(`  ⚠ 连续失败 ${consecutiveFailures} 次，停止执行以避免限流`);
+           circuitBroken = true;
+           break outer;
+         }
+       }
+       actions++;
+        await Bun.sleep(jitter(likeIntervalMs, 4000));
       }
 
-      // Comment via API
-      if (commentEnabled && comments < commentMax && !alreadyDone("comment", url)) {
-        const text =
-          commentTemplates[Math.floor(Math.random() * commentTemplates.length)];
+      // Comment via agent-browser (Chrome CDP 真人操作)
+      const hourlyOk = hourlyCommentCount() + comments < hourlyCommentCap;
+      if (commentEnabled && comments < commentMax && commentOkCap && hourlyOk && !circuitBroken && actions < maxActions && !alreadyDone("search-comment", url)) {
+        // AI 动态生成评论（替代固定模板），用原微博正文 + 博主名
+        const text = generateAiComment(post.content ?? keyword, post.user ?? "");
         console.log(`    Commenting: ${url || postId}`);
         const result = commentOnPost(postId, text);
-        if (result.ok) {
-          comments++;
-          logOperation("comment", url, "success", text);
-        } else if (result.restriction) {
-          console.log(`    ⚠ 评论受限: ${result.message}`);
-          logOperation("comment", url, "restricted", result.message);
-        } else {
-          logOperation("comment", url, "failed", result.message ?? text);
-        }
-        actions++;
-        await Bun.sleep(15000 + Math.random() * 15000);
+       if (result.ok) {
+         comments++;
+         consecutiveFailures = 0;
+         logOperation("search-comment", url, "success", text);
+       } else if (result.restriction) {
+          console.log(`    ⚠ 评论受限(权限): ${result.message}`);
+          logOperation("search-comment", url, "restricted", result.message ?? "");
+        } else if (result.rateLimited) {
+          console.log(`    ⚠ 评论限流: ${result.message}`);
+          logOperation("search-comment", url, "failed", result.message ?? "rate_limited");
+          circuitBroken = true;
+          break outer;
+       } else {
+         logOperation("search-comment", url, "failed", result.message ?? text);
+         consecutiveFailures++;
+         if (consecutiveFailures >= 3) {
+           console.log(`  ⚠ 连续失败 ${consecutiveFailures} 次，停止执行以避免限流`);
+           circuitBroken = true;
+           break outer;
+         }
+       }
+       actions++;
+        await Bun.sleep(jitter(commentIntervalMs, commentJitterMs));
       }
     }
   }
 
   console.log(
-    `[Weibo Feed Monitor] Done. Likes: ${likes}, Comments: ${comments}, Total actions: ${actions}`
+    `[Weibo Feed Monitor] Done. Likes: ${likes}, Comments: ${comments}, Total actions: ${actions}${circuitBroken ? " (熔断)" : ""}`
   );
 }
 

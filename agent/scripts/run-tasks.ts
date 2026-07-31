@@ -146,6 +146,7 @@ Rules:
 - ALWAYS run \`bun run scripts/log-operation.ts add --platform <p> --action <a> --url <url> --status <s> [--note <n>]\` after each successful action
 - Respect the session constraints in tasks.md
 - If a post URL is already in the operation log for that action, skip it silently
+- STOP immediately after 3 consecutive failed actions (status=failed) to avoid triggering rate limits
 
 At the end, run \`bun run scripts/log-operation.ts recent --limit 20\` and report:
 - What tasks were completed

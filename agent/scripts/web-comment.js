@@ -162,11 +162,14 @@ function attemptWebComment(numericMid, commentText) {
     '      return JSON.stringify({ code: 0, message: "success", channel: "web", data: { comment_id: data.data?.id, text: data.data?.text } });',
     '    } else {',
     '      const msg = data.message || "评论失败";',
-    '      if (msg.includes("操作繁忙")) {',
+    '      if (msg.includes("操作繁忙") || msg.includes("操作频繁") || msg.includes("update weibo too fast")) {',
     '        return JSON.stringify({ code: -1, message: msg, data: { rate_limited: true, reason: msg } });',
     '      }',
     '      const restrictionMap = {',
     '        "作者只允许关注": "该博主设置了评论限制：仅允许关注一定天数的粉丝评论。你的账号尚不满足条件，暂时无法评论。",',
+    '        "由于对方的设置": "该博主设置了评论限制，你暂时无法评论。",',
+    '        "你不能评论": "你没有评论此微博的权限（博主限制了评论）。",',
+    '        "关注人可评论": "该博主仅允许关注人评论，你尚不满足条件。",',
     '        "无评论权限": "你没有评论此微博的权限，可能原因：博主设置了评论权限限制、微博已删除、或非粉丝无法评论。",',
     '        "内容包含敏感词": "评论内容包含敏感词，请修改后重试。",',
     '      };',
@@ -230,7 +233,7 @@ function attemptMobileComment(numericMid, commentText) {
     '      return JSON.stringify({ code: 0, message: "success", channel: "mobile", data: { comment_id: data.data?.id, text: data.data?.text } });',
     '    } else {',
     '      const msg = data.msg || "评论失败";',
-    '      if (msg.includes("操作频繁")) {',
+    '      if (msg.includes("操作频繁") || msg.includes("操作繁忙") || msg.includes("update weibo too fast")) {',
     '        return JSON.stringify({ code: -1, message: msg, data: { rate_limited: true, reason: msg } });',
     '      }',
     '      if (msg.includes("参数")) {',
@@ -260,7 +263,100 @@ function attemptMobileComment(numericMid, commentText) {
 const RETRY_DELAYS = [30000, 60000, 120000];
 
 function sleep(ms) {
-  execSync(`node -e "setTimeout(()=>{}, ${ms})"`, { timeout: ms + 5000, stdio: 'ignore' });
+  // 旧实现用 setTimeout(()=>{}, ms) 立即返回，退避形同虚设。
+  // 改用 node -e 配合真的会等待的 Promise.resolve().then 链不靠谱，
+  // 这里用 Atomics.wait 同步阻塞当前线程，干净且不吃 CPU。
+  const buf = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(buf, 0, 0, ms);
+}
+
+// ── 通道 3: Chrome CDP 浏览器自动化（降级方案）──────────────────────────────
+// 双通道 API 均限流时，用 agent-browser 模拟真人：打开帖子→填评论→点发送
+function attemptBrowserComment(numericMid, commentText) {
+  const detailUrl = `https://weibo.com/detail/${numericMid}`;
+  try {
+    // 1. 打开帖子详情页
+    browserNavigate(detailUrl);
+    // 2. 等待页面加载完成
+    execSync('agent-browser wait 3000', {
+      encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    // 3. 通过 DOM 找到评论输入框，填入内容，触发提交
+    //    weibo.com 详情页评论框是 contenteditable 的 div 或 textarea
+    const jsCode = [
+      '(async () => {',
+      '  try {',
+      `    const comment = ${JSON.stringify(commentText)};`,
+      '    // 尝试找到评论输入框（多种选择器兼容）',
+      '    const selectors = [',
+      '      "textarea[placeholder*=\\"评论\\"]",',
+      '      "div[contenteditable=\\"true\\"][class*=\\"comment\\"]",',
+      '      "div[contenteditable=\\"true\\"]",',
+      '      "textarea.WB_input",',
+      '      "[class*=\\"comment-input\\"] textarea",',
+      '      "[class*=\\"comment_input\\"] textarea",',
+      '    ];',
+      '    let inputEl = null;',
+      '    for (const sel of selectors) {',
+      '      inputEl = document.querySelector(sel);',
+      '      if (inputEl) break;',
+      '    }',
+      '    if (!inputEl) {',
+      '      // 如果没找到输入框，可能需要先点击评论按钮展开',
+      '      const commentBtn = document.querySelector("[class*=\\"comment\\"] button, [class*=\\"comment\\"] a, [action-type=\\"comment\\"]");',
+      '      if (commentBtn) { commentBtn.click(); await new Promise(r => setTimeout(r, 1500)); }',
+      '      for (const sel of selectors) {',
+      '        inputEl = document.querySelector(sel);',
+      '        if (inputEl) break;',
+      '      }',
+      '    }',
+      '    if (!inputEl) return JSON.stringify({ code: -1, message: "未找到评论输入框" });',
+      '    // 填入评论内容',
+      '    inputEl.focus();',
+      '    if (inputEl.tagName === "TEXTAREA" || inputEl.tagName === "INPUT") {',
+      '      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;',
+      '      nativeInputValueSetter.call(inputEl, comment);',
+      '      inputEl.dispatchEvent(new Event("input", { bubbles: true }));',
+      '      inputEl.dispatchEvent(new Event("change", { bubbles: true }));',
+      '    } else {',
+      '      // contenteditable div',
+      '      inputEl.innerText = comment;',
+      '      inputEl.dispatchEvent(new InputEvent("input", { bubbles: true, data: comment }));',
+      '    }',
+      '    await new Promise(r => setTimeout(r, 500));',
+      '    // 找到发送按钮并点击',
+      '    const sendSelectors = [',
+      '      "button[class*=\\"submit\\"]",',
+      '      "a[class*=\\"submit\\"]",',
+      '      "button[class*=\\"send\\"]",',
+      '      "[class*=\\"comment\\"] button[type=\\"submit\\"]",',
+      '      "a[action-type=\\"post\\"]",',
+      '    ];',
+      '    let sendBtn = null;',
+      '    for (const sel of sendSelectors) {',
+      '      sendBtn = document.querySelector(sel);',
+      '      if (sendBtn) break;',
+      '    }',
+      '    if (!sendBtn) {',
+      '      // 兜底: 用键盘 Enter 发送',
+      '      inputEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));',
+      '      await new Promise(r => setTimeout(r, 2000));',
+      '      return JSON.stringify({ code: 0, message: "success", channel: "browser-enter", data: { text: comment } });',
+      '    }',
+      '    sendBtn.click();',
+      '    await new Promise(r => setTimeout(r, 2000));',
+      '    return JSON.stringify({ code: 0, message: "success", channel: "browser", data: { text: comment } });',
+      '  } catch(e) {',
+      '    return JSON.stringify({ code: -1, message: "浏览器评论失败: " + e.message });',
+      '  }',
+      '})()',
+    ].join(' ');
+    const result = browserEval(jsCode);
+    try { return JSON.parse(result); }
+    catch { return { code: -1, message: '浏览器评论返回解析失败', data: { raw: result.slice(0, 200) } }; }
+  } catch (err) {
+    return { code: -1, message: `浏览器自动化失败: ${err.message}` };
+  }
 }
 
 // ── 主评论逻辑: 双通道 + 退避重试 ───────────────────────────────────────────
@@ -339,9 +435,17 @@ async function commentOnPost(id, commentText) {
   }
 
   // 所有重试均失败
+  // 降级到 Chrome CDP 浏览器自动化：模拟真人发评论
+  process.stderr.write(`[comment] 双通道均限流，降级到 Chrome CDP 浏览器自动化...\n`);
+  const browserResult = attemptBrowserComment(numericMid, commentText);
+  if (browserResult.code === 0) {
+    console.log(JSON.stringify(browserResult, null, 2));
+    return;
+  }
+  // 浏览器也失败，返回最终限流结果
   console.log(JSON.stringify({
     code: -1,
-    message: `评论限流，已重试 ${RETRY_DELAYS.length} 次仍失败`,
+    message: `评论限流，已重试 ${RETRY_DELAYS.length} 次仍失败，浏览器降级也失败`,
     data: { rate_limited: true, reason: lastResult?.data?.reason || '操作繁忙' },
   }, null, 2));
 }
