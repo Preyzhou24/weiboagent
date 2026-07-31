@@ -174,5 +174,73 @@ if (command === 'summary') {
   process.exit(0)
 }
 
+// ── daily-count ───────────────────────────────────────────────────────────────
+// 统计今天（基于本地时区当天 00:00 起）各 action 的成功次数，供执行器熔断判断日上限。
+// 用法: log-operation.ts daily-count --platform weibo
+if (command === 'daily-count') {
+  const platform = flags.platform ?? ''
+  const now = new Date()
+  // 本地时区当天零点
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const log = loadLog()
+  const today = log.operations.filter(
+    op => op.platform === platform && op.status === 'success' && new Date(op.ts) >= startOfDay
+  )
+  // 按 action 聚合，同时按 action 前缀族（如 search-like / hot-like 都归入 like 族）聚合
+  const byAction: Record<string, number> = {}
+  let likeFamily = 0
+  let commentFamily = 0
+  let total = 0
+  for (const op of today) {
+    byAction[op.action] = (byAction[op.action] ?? 0) + 1
+    if (op.action.endsWith('like')) likeFamily++
+    if (op.action.endsWith('comment') || op.action === 'comment') commentFamily++
+    total++
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    platform,
+    date: startOfDay.toISOString().slice(0, 10),
+    total,
+    likeFamily,
+    commentFamily,
+    byAction,
+  }))
+  process.exit(0)
+}
+
+// ── hourly-count ─────────────────────────────────────────────────────────────
+// 统计过去 N 小时内各 action 族的成功次数，供每小时限流判断。
+// 用法: log-operation.ts hourly-count --platform weibo [--hours 1]
+if (command === 'hourly-count') {
+  const platform = flags.platform ?? ''
+  const hours = parseInt(flags.hours ?? '1', 10)
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000)
+  const log = loadLog()
+  const recent = log.operations.filter(
+    op => op.platform === platform && op.status === 'success' && new Date(op.ts) >= since
+  )
+  const byAction: Record<string, number> = {}
+  let likeFamily = 0
+  let commentFamily = 0
+  let total = 0
+  for (const op of recent) {
+    byAction[op.action] = (byAction[op.action] ?? 0) + 1
+    if (op.action.endsWith('like')) likeFamily++
+    if (op.action.endsWith('comment') || op.action === 'comment') commentFamily++
+    total++
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    platform,
+    hours,
+    total,
+    likeFamily,
+    commentFamily,
+    byAction,
+  }))
+  process.exit(0)
+}
+
 console.error(`Unknown command: ${command}. Use: add | check | recent | summary`)
 process.exit(2)

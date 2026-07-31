@@ -117,10 +117,13 @@ async function main() {
   hotTopics.sort((a, b) => a.rank - b.rank);
 
   // Step 2: For top trends, search and engage
-  let engagements = 0;
-  for (const topic of hotTopics.slice(0, 3)) {
-    if (engagements >= maxEngagements) break;
-    console.log(`  Trend #${topic.rank} (${topic.category}): ${topic.text}`);
+ let engagements = 0;
+ let consecutiveFailures = 0;
+ const MAX_CONSECUTIVE_FAILURES = 3;
+ let shouldStop = false;
+ for (const topic of hotTopics.slice(0, 3)) {
+   if (engagements >= maxEngagements || shouldStop) break;
+   console.log(`  Trend #${topic.rank} (${topic.category}): ${topic.text}`);
 
     const searchResult = weiboApi("search", [`--query=${topic.text}`]);
     // 智搜 returns AI summary in data.msg with embedded mblogid references
@@ -129,21 +132,30 @@ async function main() {
       .slice(0, 3); // top 3 unique post IDs
     const posts = mblogIds.map(id => ({ id: id, mid: id, url: `https://weibo.com/detail/${id}` }));
 
-    for (const post of posts.slice(0, 3)) {
-      if (engagements >= maxEngagements) break;
-      const postId = post.id ?? post.mid ?? "";
+   for (const post of posts.slice(0, 3)) {
+     if (engagements >= maxEngagements || shouldStop) break;
+     const postId = post.id ?? post.mid ?? "";
       const url = post.url ?? post.link ?? (postId ? `weibo://post/${postId}` : "");
       if (!postId || alreadyDone("hot-like", url)) continue;
 
       // Like the trending post
-      const likeResult = weiboApi("like-post", [`--id=${postId}`]);
-      const ok = likeResult && likeResult.code === 0;
-      logOperation("hot-like", url, ok ? "success" : "failed", `trend:${topic.text}`);
-      if (ok) {
-        engagements++;
-        console.log(`    Liked: ${url}`);
-      }
-      await Bun.sleep(4000);
+     const likeResult = weiboApi("like-post", [`--id=${postId}`]);
+     const ok = likeResult && likeResult.code === 0;
+     logOperation("hot-like", url, ok ? "success" : "failed", `trend:${topic.text}`);
+     if (ok) {
+       engagements++;
+       consecutiveFailures = 0;
+       console.log(`    Liked: ${url}`);
+     }
+     else {
+       consecutiveFailures++;
+       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+         console.log(`  ⚠ 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，停止执行以避免限流`);
+         shouldStop = true;
+         break;
+       }
+     }
+     await Bun.sleep(4000);
     }
   }
 

@@ -1,4 +1,4 @@
-﻿# ============================================================
+﻿﻿# ============================================================
 # WeiboAgent Setup Script
 # ============================================================
 # Run this script in PowerShell (Admin is NOT required)
@@ -77,8 +77,8 @@ try {
 }
 Pop-Location
 
-# --- Step 5: Install All-IN-ONE CLI (for daily posting only) ---
-Write-Host "[5/5] Installing All-IN-ONE CLI (posting only)..." -ForegroundColor Yellow
+# --- Step 5: Install All-IN-ONE CLI (for search + posting) ---
+Write-Host "[5/5] Installing All-IN-ONE CLI (search + posting)..." -ForegroundColor Yellow
 try {
     pip install all-in-one-aione
     aione setup
@@ -96,15 +96,17 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Edit agent\.env and add your DeepSeek API key" -ForegroundColor White
-Write-Host "  2. Configure Weibo cookies:" -ForegroundColor White
-Write-Host "Write-Host "     aione auth weibo set-cookie --profile creator --cookie `"<cookie>`"" -ForegroundColor White
-Write-Host "  3. Launch Chrome for Weibo:" -ForegroundColor White
+Write-Host "  2. Configure Weibo API (OAuth) for likes/comments/super-topic:" -ForegroundColor White
+Write-Host "     cd agent && node scripts/weibo-api/weibo-skill.js login --app-id=<APP_ID> --app-secret=<APP_SECRET>" -ForegroundColor White
+Write-Host "  3. Configure aione cookie (web=search only, posting uses Chrome):" -ForegroundColor White
+Write-Host "     aione auth weibo set-cookie --profile web --cookie `"<web_cookie>`"" -ForegroundColor White
+Write-Host "  4. Launch Chrome for Weibo (posting + feed + follow):" -ForegroundColor White
 Write-Host "     cd agent && bun run setup-chrome --target weibo" -ForegroundColor White
 Write-Host "     (Log into weibo.com in the opened Chrome window)" -ForegroundColor White
-Write-Host "  4. Health check:" -ForegroundColor White
+Write-Host "  5. Health check:" -ForegroundColor White
 Write-Host "     cd agent && bun run doctor --check-cdp" -ForegroundColor White
-Write-Host "  5. Start the agent:" -ForegroundColor White
+Write-Host "  6. Start the agent:" -ForegroundColor White
 Write-Host "     cd agent && bun start" -ForegroundColor White
-Write-Host "  6. Test with a task:" -ForegroundColor White
+Write-Host "  7. Test with a task:" -ForegroundColor White
 Write-Host '     bun start -p "/weibo 搜索AI相关的最新微博，并查看热门内容"' -ForegroundColor White
 Write-Host ""

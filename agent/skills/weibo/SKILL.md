@@ -1,4 +1,4 @@
-﻿---
+﻿﻿---
 description: "Weibo (微博) platform operations playbook. Hybrid approach: Weibo Open API (weibo-skill.js) for structured operations + agent-browser for feed browsing. API-first, browser-fallback."
 allowed-tools:
   - Bash
@@ -7,13 +7,15 @@ user-invocable: true
 
 # Weibo (微博) — Agent Operations Playbook (Unified)
 
-Platform-specific operation sequences for Weibo. Uses a **hybrid API-first approach**:
-- **Weibo Open API** (`node scripts/weibo-api/weibo-skill.js <command>`) — all structured operations: search, hot trends, posting, commenting, replying, liking, creator analytics, interactive analysis, super topic engagement
-- **All-IN-ONE CLI** (`aione weibo ...`) — only for posting to personal timeline (no API alternative)
-- **agent-browser** (Chrome CDP) — browser-only ops: home feed browsing, follow/unfollow
+Platform-specific operation sequences for Weibo. Uses a **hybrid three-tier approach**:
+- **Weibo Open API** (`node scripts/weibo-api/weibo-skill.js <command>`) — structured write operations: liking, commenting, replying, hot trends, creator analytics, interactive analysis, super topic engagement
+- **aione search** (`node scripts/weibo-api/weibo-search.js search`) — keyword search via All-IN-ONE's cookie API. Returns structured results (content + user + clean URL) with auto-converted numeric MID. Replaces the old OAuth wis-search (which only returned an AI summary requiring regex-parsed mblogids)
+- **All-IN-ONE CLI** (`aione weibo ...`) — image/video upload only (posting moved to agent-browser)
+- **agent-browser** (Chrome CDP) — browser-only ops: home feed browsing, follow/unfollow, plain weibo posting
 
 **API auth**: OAuth App ID + App Secret → auto-managed Token (cached + auto-refresh)
 **Browser auth**: Weibo cookie saved in isolated Chrome (manual login, never automate)
+**aione auth**: Weibo cookie per profile (`aione auth weibo set-cookie --profile <web|creator>`)
 
 ---
 
@@ -74,13 +76,14 @@ node scripts/weibo-api/weibo-skill.js hot-search --category=科技榜
 
 Use this at the start of each session to discover trending topics and ride the wave.
 
-### 1.2 Smart Search (API)
+### 1.2 Smart Search (aione cookie API)
 
 ```bash
-node scripts/weibo-api/weibo-skill.js search --query="AI agent"
+# aione 搜索: 返回结构化帖子列表 (id + url + content + user)
+node scripts/weibo-api/weibo-search.js search --query="AI agent" --page=1
 ```
 
-Returns AI-powered search results with summary.
+Returns structured posts ready for engagement: each has a numeric `id` (auto-converted from base62) for `like-post`, a `url` for dedup logging, and `content`/`user` for relevance filtering. The old OAuth `weibo-skill.js search` only returned an AI summary with embedded mblogids (unreliable for targeting).
 
 ### 1.3 Browse Home Feed (Browser)
 
@@ -118,43 +121,32 @@ node scripts/weibo-api/weibo-skill.js like-post --id=<weibo_id>
 
 Stable API call — no browser automation needed.
 
-### 2.2 Comment on a Post (Web API)
+### 2.2 Comment on a Post (agent-browser)
 
-普通微博评论使用微博内部 Web API（通过浏览器上下文调用，绕过反机器人检测）：
+普通微博评论使用 agent-browser (Chrome CDP) 模拟真人操作，不依赖 Ajax API 或 cookie，抗封禁能力最强：
 
 ```bash
+node scripts/browser-comment.js comment --id=<微博MID或base62> --comment="评论内容"
 ```
 
 **前提**: Chrome CDP 已启动并登录 weibo.com
 
+**流程**: 打开帖子详情页 → 填入评论 → 点击评论按钮 → 验证成功（评论框清空 = 成功）
+
 **ID 格式自动识别**: `--id` 同时接受数字 MID（如 `5326346139994630`）和 base62 ID（如 `NcU5a07Ib`）。base62 格式会自动转换为数字 MID，无需手动处理。
 
-**限流重试**: 当服务器返回 "操作繁忙" 时，脚本自动指数退避重试（30s→60s→120s，最多 3 次）。所有重试均失败后返回 `rate_limited` 标记，agent 应告知用户稍后再试：
+**优势**: 相比 Ajax API 方式，浏览器自动化完全是真人操作流程，不触发 `update weibo too fast` 账号级风控，不依赖 cookie 有效性。评论内容由 AI 动态生成（`ai-comment.js`），针对每条微博正文生成 10-30 字个性化短评。
+
+**权限限制处理**: 当博主设置了评论权限，脚本检测到错误提示后返回 `restriction` 标记：
 ```json
 {
   "code": -1,
-  "message": "评论限流，已重试 3 次仍失败",
-  "data": { "rate_limited": true, "reason": "操作繁忙,请稍后再试" }
-}
-```
-**双通道限流应对**: `web-comment.js` 使用双通道策略对抗限流：
-1. **Web 通道** (weibo.com `/ajax/comments/create`) — 主通道
-2. **移动端通道** (m.weibo.cn `/api/comments/create`) — Web 限流时自动切换，PC 端和移动端有独立的限流计数器
-
-每个通道维护 90 秒冷却期（`~/.weibo-skill/comment-cooldown.json`），限流后自动跳到另一通道。双通道均限流时指数退避重试（30s→60s→120s，交替通道）。权限限制不重试，直接返回。
-
-Workflow executor 评论间已内置 15-30 秒随机延迟，从源头降低触发限流的概率。
-
-**权限限制处理**: 当博主设置了评论权限（如"仅关注100天以上的粉丝评论"），脚本会返回友好提示：
-```json
-{
-  "code": -1,
-  "message": "该博主设置了评论限制：仅允许关注一定天数的粉丝评论。你的账号尚不满足条件，暂时无法评论。",
-  "data": { "restriction": true, "reason": "作者只允许关注100天以上的粉丝评论" }
+  "message": "你没有评论此微博的权限...",
+  "data": { "restriction": true, "reason": "..." }
 }
 ```
 
-Workflow executor 遇到限制时会打印 `⚠ 评论受限: <原因>` 并跳过，不会重试或报错退出。
+Workflow executor 遇到限制时会打印 `⚠ 评论受限: <原因>` 并跳过，不会重试或报错退出。评论间内置 20-30 秒随机延迟 + 每小时 10 条上限。
 
 > 超话帖子评论仍使用 API `weibo-skill.js comment --id=<id> --comment=<text> --model=<model>`（超话帖子有评论权限）
 
@@ -186,11 +178,16 @@ node scripts/weibo-api/weibo-skill.js post --topic="AI" --status="今天分享�
 
 Use `\n` for line breaks (single backslash, not `\\n`).
 
-### 3.2 Post Plain Weibo (CLI fallback)
+### 3.2 Post Plain Weibo (agent-browser)
 
 ```bash
-aione weibo weibo post --note-info '{"content":"今天天气真好！"}' --output json
+# 基于 agent-browser (Chrome CDP) 发帖：模拟真人操作，不依赖 API 或 cookie
+# weibo-daily-post.ts 自动执行: 打开 weibo.com → 填入内容 → 点击发送
+bun run scripts/workflow-engine.ts run --id weibo-daily-post
 ```
+
+完全真人操作流程，抗封禁能力最强。发帖后自动写入 10 分钟冷却标记，评论执行器读取后会自动等待，避免触发 `update weibo too fast` 账号级风控。
+超话发帖仍走 OAuth API（`weibo-skill.js post --topic`），不触发 update 频率限制。
 
 ### 3.3 Upload Image (API)
 
@@ -380,7 +377,9 @@ If session expired: STOP, ask user to re-login manually. Never automate login.
 ## Best Practices
 
 1. **API-first**: try `weibo-skill.js` before any browser operation
-2. **Rate limiting**: space API calls by 3-5 seconds; do not rapid-fire
+2. **Rate limiting**: never rapid-fire. Single like ≥ 9s (with jitter), single comment ≥ 20s (with jitter). Batch engagement is the #1 cause of "操作频繁" — historical logs showed ~100 like/comment in 10 minutes collapsed to <20% success. The search/feed executors now enforce this pacing plus a daily cap (default 30 likes / 15 comments per day)
+3. **Circuit breaker**: if any like or comment returns a rate-limit error, the executor immediately halts the rest of that run (`circuit-broken`). Do not keep firing after a single "操作繁忙" — it only deepens the throttle window
+4. **Daily caps**: executors check `bun run scripts/log-operation.ts daily-count --platform weibo` at startup; if the day's successful likes/comments already exceed the cap, the run is skipped entirely
 3. **CAPTCHA**: if encountered — STOP immediately, notify user
-4. **Cross-session dedup**: use `bun run scripts/log-operation.ts` to avoid repeating actions
-5. **Element identification** (browser): never hardcode ref numbers; re-snapshot each time; identify by text/role
+5. **Cross-session dedup**: use `bun run scripts/log-operation.ts` to avoid repeating actions
+6. **Element identification** (browser): never hardcode ref numbers; re-snapshot each time; identify by text/role

@@ -214,9 +214,11 @@ async function main() {
 
   // Step 4: Auto-reply if enabled
   if (autoReply) {
-    let replied = 0;
-    for (const c of scored.slice(0, maxReplies)) {
-      if (replied >= maxReplies) break;
+   let replied = 0;
+   let consecutiveFailures = 0;
+   const MAX_CONSECUTIVE_FAILURES = 3;
+   for (const c of scored.slice(0, maxReplies)) {
+     if (replied >= maxReplies) break;
       if (alreadyDone("smart-reply", c.postJumpLink)) continue;
 
       const replyText = pickReplyTemplate(c.priorityLabel, c.userVerified);
@@ -229,13 +231,21 @@ async function main() {
         `--model=deepseek`,
       ]);
 
-      const ok = replyResult && replyResult.code === 0;
-      logOperation("smart-reply", c.postJumpLink, ok ? "success" : "failed", `${c.priorityLabel}: ${replyText.slice(0, 50)}`);
-      if (ok) {
-        replied++;
-        console.log(`    Replied to ${c.userName} (${c.priorityLabel}): ${replyText.slice(0, 40)}...`);
-      }
-      await Bun.sleep(5000);
+     const ok = replyResult && replyResult.code === 0;
+     logOperation("smart-reply", c.postJumpLink, ok ? "success" : "failed", `${c.priorityLabel}: ${replyText.slice(0, 50)}`);
+     if (ok) {
+       replied++;
+       consecutiveFailures = 0;
+       console.log(`    Replied to ${c.userName} (${c.priorityLabel}): ${replyText.slice(0, 40)}...`);
+     }
+     else {
+       consecutiveFailures++;
+       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+         console.log(`  ⚠ 连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，停止执行以避免限流`);
+         break;
+       }
+     }
+     await Bun.sleep(5000);
     }
     console.log(`\n  Auto-replied to ${replied} comments`);
   }
