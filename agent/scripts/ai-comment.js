@@ -100,8 +100,9 @@ async function callLLM(prompt) {
       { role: "system", content: prompt.system },
       { role: "user", content: prompt.user },
     ],
-    max_tokens: 60,
+    max_tokens: 300,
     temperature: 0.8,
+    thinking: { type: "disabled" },
   });
   const resp = await fetch(url, {
     method: "POST",

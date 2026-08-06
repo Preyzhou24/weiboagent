@@ -2,11 +2,11 @@
 /**
  * Weibo Feed Monitor & Auto-Engage Workflow Executor (API-first refactor)
  *
- * Searches Weibo for keywords via Weibo Open API (weibo-skill.js search),
- * then for each undiscovered post uses API to like and agent-browser to comment.
+ * Searches Weibo for keywords via aione (cookie-driven), then for each
+ * undiscovered post uses Chrome CDP to like and comment. No OAuth needed.
  * Logs every action for cross-session dedup.
  *
- * 整合改进: 与 weibo-search-reply.ts 共用同一套节流/熔断/日上限逻辑——
+ * 节流/熔断/日上限逻辑:
  *  1. 日上限预检 (dailyLikeCap/dailyCommentCap) 启动即查，超限退出。
  *  2. 限流熔断: like/comment 命中限流立即终止本轮，不再硬刷。
  *  3. 真实错误码: 失败 note 记录 API 返回的 code/msg。
@@ -26,12 +26,12 @@ import { homedir } from "node:os";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../..");
 const LOG_SCRIPT = resolve(ROOT, "scripts", "log-operation.ts");
-const WEIBO_API = resolve(ROOT, "scripts", "weibo-api", "weibo-skill.js");
 const BROWSER_COMMENT = resolve(ROOT, "scripts", "browser-comment.js");
+const BROWSER_LIKE = resolve(ROOT, "scripts", "browser-like.js");
 const WEIBO_SEARCH = resolve(ROOT, "scripts", "weibo-api", "weibo-search.js");
 const AI_COMMENT = resolve(ROOT, "scripts", "ai-comment.js");
 
-const POST_COOLDOWN_FILE = join(homedir(), ".weibo-skill", "post-cooldown.json");
+const POST_COOLDOWN_FILE = join(homedir(), ".weiboagent", "post-cooldown.json");
 const POST_COOLDOWN_MS = 10 * 60 * 1000; // 10 分钟账号级冷却
 
 /** 读取「刚发帖」冷却标记，返回剩余冷却毫秒数（0 = 已过冷却期） */
@@ -93,15 +93,16 @@ function generateAiComment(content: string, user: string): string {
 
 // -- Helpers ---------------------------------------------------------------
 
-function weiboApi(command: string, args: string[] = []): any {
-  const argStr = args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(" ");
+/** Chrome CDP 点赞 (browser-like.js) — 替代 OAuth like-post */
+function browserLike(postId: string, postUrl?: string): any {
   try {
-    const out = execSync(`node "${WEIBO_API}" ${command} ${argStr}`, {
+    const urlArg = postUrl ? ` --url=${JSON.stringify(postUrl)}` : ``;
+    const out = execSync(`node "${BROWSER_LIKE}" like --id=${postId}${urlArg}`, {
       encoding: "utf-8",
       timeout: 30000,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    return JSON.parse(out);
+    return JSON.parse(out.trim());
   } catch {
     return null;
   }
@@ -142,10 +143,11 @@ function isRateLimited(result: any): boolean {
   return /频繁|繁忙|稍后再试|rate.?limit|too many/i.test(text);
 }
 
-function commentOnPost(postId: string, text: string): { ok: boolean; restriction?: boolean; rateLimited?: boolean; message?: string } {
+function commentOnPost(postId: string, text: string, postUrl?: string): { ok: boolean; restriction?: boolean; rateLimited?: boolean; message?: string } {
   if (!postId) return { ok: false };
   try {
-    const out = execSync(`node "${BROWSER_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}`, {
+    const urlArg = postUrl ? ` --url=${JSON.stringify(postUrl)}` : ``;
+    const out = execSync(`node "${BROWSER_COMMENT}" comment --id=${postId} --comment=${JSON.stringify(text)}${urlArg}`, {
       encoding: "utf-8",
       timeout: 300000,
       stdio: ["pipe", "pipe", "pipe"],
@@ -259,7 +261,7 @@ async function main() {
       // Like via API
       if (likeEnabled && likes < likeMax && likeOkCap && !alreadyDone("search-like", url)) {
         console.log(`    Liking: ${url || postId}`);
-        const result = weiboApi("like-post", [`--id=${postId}`]);
+        const result = browserLike(postId, url);
         const ok = result && result.code === 0;
        if (ok) {
          likes++;
@@ -291,7 +293,7 @@ async function main() {
         // AI 动态生成评论（替代固定模板），用原微博正文 + 博主名
         const text = generateAiComment(post.content ?? keyword, post.user ?? "");
         console.log(`    Commenting: ${url || postId}`);
-        const result = commentOnPost(postId, text);
+        const result = commentOnPost(postId, text, url);
        if (result.ok) {
          comments++;
          consecutiveFailures = 0;

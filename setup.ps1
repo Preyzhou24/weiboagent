@@ -95,18 +95,16 @@ Write-Host "  Setup Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor White
-Write-Host "  1. Edit agent\.env and add your DeepSeek API key" -ForegroundColor White
-Write-Host "  2. Configure Weibo API (OAuth) for likes/comments/super-topic:" -ForegroundColor White
-Write-Host "     cd agent && node scripts/weibo-api/weibo-skill.js login --app-id=<APP_ID> --app-secret=<APP_SECRET>" -ForegroundColor White
-Write-Host "  3. Configure aione cookie (web=search only, posting uses Chrome):" -ForegroundColor White
-Write-Host "     aione auth weibo set-cookie --profile web --cookie `"<web_cookie>`"" -ForegroundColor White
-Write-Host "  4. Launch Chrome for Weibo (posting + feed + follow):" -ForegroundColor White
+Write-Host "  1. Edit agent\.env and add your LLM API key" -ForegroundColor White
+Write-Host "  2. Launch Chrome for Weibo (covers all 5 core functions):" -ForegroundColor White
 Write-Host "     cd agent && bun run setup-chrome --target weibo" -ForegroundColor White
 Write-Host "     (Log into weibo.com in the opened Chrome window)" -ForegroundColor White
-Write-Host "  5. Health check:" -ForegroundColor White
+Write-Host "  3. Sync cookie to aione (for search):" -ForegroundColor White
+Write-Host "     cd agent && node scripts/sync-cookies.js sync" -ForegroundColor White
+Write-Host "  4. Health check:" -ForegroundColor White
 Write-Host "     cd agent && bun run doctor --check-cdp" -ForegroundColor White
-Write-Host "  6. Start the agent:" -ForegroundColor White
+Write-Host "  5. Start the agent:" -ForegroundColor White
 Write-Host "     cd agent && bun start" -ForegroundColor White
-Write-Host "  7. Test with a task:" -ForegroundColor White
+Write-Host "  6. Test with a task:" -ForegroundColor White
 Write-Host '     bun start -p "/weibo 搜索AI相关的最新微博，并查看热门内容"' -ForegroundColor White
 Write-Host ""

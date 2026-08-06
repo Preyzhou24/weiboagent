@@ -39,23 +39,26 @@ function isBase62Id(id) { return /\D/.test(id); }
 
 // ── agent-browser 辅助 ─────────────────────────────────────────────────────────
 
-function browserExec(cmd, timeout = 15000) {
+function browserExec(cmd, timeout = 15000, input) {
   try {
     return execSync(cmd, {
       encoding: "utf-8",
       timeout,
       stdio: ["pipe", "pipe", "pipe"],
+      input: input || undefined,
     }).trim();
   } catch {
     return "";
   }
 }
 
-function browserEval(jsCode, timeout = 15000) {
-  const result = browserExec(`agent-browser eval "${jsCode.replace(/"/g, '\\"').replace(/\n/g, " ")}"`, timeout);
-  // 去掉外层引号
+function browserEval(jsCode, timeout = 30000) {
+  // Use base64 to avoid all shell-quote escaping issues.
+  const b64 = Buffer.from(jsCode).toString("base64");
+  const result = browserExec("agent-browser eval -b " + b64, timeout);
+  // Strip outer quotes if present.
   if (result.startsWith('"') && result.endsWith('"')) {
-    return result.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    return result.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
   }
   return result;
 }
@@ -75,7 +78,7 @@ function parseArgs(argv) {
 
 // ── 主评论逻辑 ─────────────────────────────────────────────────────────────────
 
-function commentOnPost(id, commentText) {
+function commentOnPost(id, commentText, postUrl) {
   if (!id) {
     console.log(JSON.stringify({ code: -1, message: "需要指定 --id 参数" }));
     process.exit(1);
@@ -93,7 +96,7 @@ function commentOnPost(id, commentText) {
   }
 
   // 1. 打开帖子详情页
-  const detailUrl = `https://weibo.com/detail/${numericMid}`;
+  const detailUrl = postUrl || `https://weibo.com/detail/${numericMid}`;
   process.stderr.write(`[comment] 打开帖子: ${detailUrl}\n`);
   browserExec(`agent-browser open ${detailUrl}`);
   browserExec("agent-browser wait 3000");
@@ -169,7 +172,7 @@ const args = parseArgs(process.argv);
 const command = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : "";
 
 if (command === "comment" || !command) {
-  commentOnPost(args.id, args.comment);
+  commentOnPost(args.id, args.comment, args.url);
 } else if (command === "help" || command === "--help") {
   console.log(`
 browser-comment.js — 基于 agent-browser (Chrome CDP) 的微博评论
